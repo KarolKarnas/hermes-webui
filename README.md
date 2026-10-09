@@ -1,5 +1,8 @@
 # Hermes Web UI
 
+Maintained fork: [KarolKarnas/hermes-webui](https://github.com/KarolKarnas/hermes-webui),
+branch `homelab`. See [fork maintenance and release verification](docs/FORK_MAINTENANCE.md).
+
 [Hermes Agent](https://hermes-agent.nousresearch.com/) is a sophisticated autonomous agent that lives on your server, accessed via a terminal or messaging apps, that remembers what it learns and gets more capable the longer it runs.
 
 Hermes WebUI is a lightweight, dark-themed web app interface in your browser for [Hermes Agent](https://hermes-agent.nousresearch.com/).

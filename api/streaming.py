@@ -1134,10 +1134,12 @@ _CLARIFY_NO_RESPONSE_TEXT = (
 def _clarify_batch_reply(questions, ask_one, cancel_evt) -> dict:
     """Answer a Hermes Agent clarify batch with the current callback contract.
 
-    Newer Hermes Agent builds call ``clarify_callback(questions)`` with a list of
+    Hermes Agent builds call ``clarify_callback(question, None, questions=...)``
+    or ``clarify_callback(questions)`` with a list of
     normalized ``{qid, question, choices, choices_offered, multi_select}``
     entries and expect ``{"answers": {qid: answer}, "outcome", "notice"?}``
-    back (``tools/clarify_tool.py``). The WebUI card asks one question at a
+    back (``tools/clarify_tool.py``). The keyword contract also consumes
+    ``timed_out`` when delivery or the response wait expires. The WebUI card asks one question at a
     time, so questions are asked in order and the batch stops at the first one
     that ends without an answer, mirroring the messaging gateway.
 
@@ -1155,6 +1157,7 @@ def _clarify_batch_reply(questions, ask_one, cancel_evt) -> dict:
         asked = ask_one(entry.get("question"), entry.get("choices"))
         if asked is None:
             reply["outcome"] = "undelivered"
+            reply["timed_out"] = True
             reply["notice"] = "The WebUI clarify prompt is not available in this runtime."
             break
         response, expired = asked
@@ -1163,6 +1166,7 @@ def _clarify_batch_reply(questions, ask_one, cancel_evt) -> dict:
             continue
         if expired and not cancel_evt.is_set():
             reply["outcome"] = "timed_out"
+            reply["timed_out"] = True
             reply["notice"] = _CLARIFY_NO_RESPONSE_TEXT
         else:
             # Stop/cancel clears the pending prompt, which releases the wait
@@ -11417,13 +11421,17 @@ def _run_agent_streaming(
         def _clarify_callback(*args, **kwargs):
             """Accept both Hermes Agent clarify callback contracts.
 
-            Current agents call ``callback(questions)`` and expect a
-            ``{answers, outcome, notice?}`` dict; older agents call
+            Current agents pass normalized entries with ``questions=`` and
+            expect ``{answers, timed_out?, notice?}``. Also accept the positional
+            batch contract returning ``{answers, outcome, notice?}``; older agents call
             ``callback(question, choices)`` and expect the answer string.
             """
-            if len(args) == 1 and not kwargs and isinstance(args[0], (list, tuple)):
+            questions = kwargs.get('questions')
+            if questions is None and len(args) == 1 and not kwargs and isinstance(args[0], (list, tuple)):
+                questions = args[0]
+            if questions:
                 return _clarify_batch_reply(
-                    args[0],
+                    questions,
                     lambda question, choices: _clarify_ask_one(
                         question, choices, session_id, cancel_event
                     ),

@@ -504,6 +504,33 @@ class TestRuntimeRouteInjection(unittest.TestCase):
         self.assertEqual(result["payloads"][1]["choices_offered"], [])
         self.assertEqual(result["payloads"][0]["timeout_seconds"], 300)
 
+    def test_clarify_callback_accepts_keyword_questions_contract(self):
+        """Agent v2026.9.24 calls callback('', None, questions=normalized).
+
+        Advertising **kwargs while discarding questions renders a blank card
+        and loses all batch answers. Exercise the actual streaming bridge.
+        """
+        questions = [
+            {"qid": "q0", "question": "Pick a database",
+             "choices": ["Postgres (Recommended)", "SQLite"],
+             "choices_offered": ["Postgres", "SQLite"], "multi_select": False},
+            {"qid": "q1", "question": "Any notes?", "choices": None,
+             "choices_offered": None, "multi_select": False},
+        ]
+        result = self._capture_clarify_timeout(
+            {"clarify": {"timeout": 300}},
+            invoke=lambda callback: callback("", None, questions=questions),
+        )
+        self.assertEqual(
+            [payload["question"] for payload in result["payloads"]],
+            [entry["question"] for entry in questions],
+        )
+        self.assertEqual(result["payloads"][0]["choices_offered"], questions[0]["choices"])
+        self.assertEqual(result["payloads"][1]["choices_offered"], [])
+        self.assertEqual(result["clarify_result"]["answers"],
+                         {"q0": "selected", "q1": "selected"})
+        self.assertNotIn("timed_out", result["clarify_result"])
+
     def test_clarify_batch_reply_timeout_and_cancel_outcomes(self):
         """#7922: a question left unanswered stops the batch and reports why."""
         import api.streaming as streaming
@@ -516,6 +543,7 @@ class TestRuntimeRouteInjection(unittest.TestCase):
         )
         self.assertEqual(timed_out["answers"], {})
         self.assertEqual(timed_out["outcome"], "timed_out")
+        self.assertTrue(timed_out["timed_out"])
         self.assertTrue(timed_out.get("notice"))
 
         cancelled_evt = threading.Event()
@@ -539,6 +567,7 @@ class TestRuntimeRouteInjection(unittest.TestCase):
             [{"qid": "q0", "question": "a"}], lambda _q, _c: None, not_cancelled,
         )
         self.assertEqual(undelivered["outcome"], "undelivered")
+        self.assertTrue(undelivered["timed_out"])
         self.assertEqual(undelivered["answers"], {})
 
     def test_clarify_callback_zero_timeout_is_unlimited(self):

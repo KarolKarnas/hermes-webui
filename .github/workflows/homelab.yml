@@ -1,0 +1,49 @@
+name: Homelab regression checks
+
+on:
+  push:
+    branches: [homelab]
+  pull_request:
+    branches: [homelab]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clarification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HERMES_HOME: /tmp/hermes-fork-test-agent
+      HERMES_WEBUI_STATE_DIR: /tmp/hermes-fork-test-state
+      HERMES_WEBUI_TEST_PYTHON: python3.13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Callback and neighboring regressions
+        run: >-
+          ./scripts/test.sh tests/test_sprint42.py tests/test_clarify_sse.py
+          tests/test_clarify_unblock.py tests/test_4504_clarify_stuck_on_expiry.py
+          tests/test_issue2883_clarify_padding.py tests/test_mobile_layout.py -q
+      - name: Lint changed Python
+        run: .venv/bin/python scripts/ruff_lint.py --diff e33da25c6cfde3ea337e1b6d7701161d02e995cf
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser tooling
+        run: |
+          npm install --prefix "$RUNNER_TEMP/clarify-layout-deps" playwright@1.64.0
+          "$RUNNER_TEMP/clarify-layout-deps/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Desktop and mobile layout regression
+        env:
+          NODE_PATH: ${{ runner.temp }}/clarify-layout-deps/node_modules
+        run: node scripts/check_clarify_layout.cjs "$RUNNER_TEMP/clarify-layout-evidence"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clarification-layout
+          path: ${{ runner.temp }}/clarify-layout-evidence/*.png
